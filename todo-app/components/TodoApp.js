@@ -170,7 +170,7 @@ export default function TodoApp({ supabase }) {
                     <th style={{ width: 110 }}>입력날짜</th>
                     <th>TO-DO</th>
                     <th style={{ width: "30%" }}>비고</th>
-                    <th style={{ width: 80, textAlign: "center" }}>완료</th>
+                    <th style={{ width: 120, textAlign: "center" }}>완료 / 삭제</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,14 +188,23 @@ export default function TodoApp({ supabase }) {
                         />
                       </td>
                       <td className="cell-check">
-                        <label className="checkbox">
-                          <input
-                            type="checkbox"
-                            checked={false}
-                            onChange={() => toggleComplete(t)}
-                          />
-                          <span className="checkmark" />
-                        </label>
+                        <div className="check-actions">
+                          <label className="checkbox" title="완료">
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              onChange={() => toggleComplete(t)}
+                            />
+                            <span className="checkmark" />
+                          </label>
+                          <button
+                            onClick={() => deleteTask(t.id)}
+                            className="icon-btn icon-danger"
+                            title="삭제"
+                          >
+                            ×
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -436,6 +445,11 @@ export default function TodoApp({ supabase }) {
         .cell-note-done { color: #94a3b8; font-size: 13px; padding-left: 9px; }
         .cell-check { text-align: center; }
         .cell-actions { text-align: center; white-space: nowrap; }
+        .check-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
         .completed-row { background: #fcfdfc; }
 
         .checkbox {
