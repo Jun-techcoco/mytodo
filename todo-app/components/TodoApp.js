@@ -1,30 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-export default function TodoApp({ supabase, session }) {
+export default function TodoApp({ supabase }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [input, setInput] = useState("");
-  const [reasonFor, setReasonFor] = useState(null);
-  const [reasonText, setReasonText] = useState("");
-  const [view, setView] = useState("active");
-  const reasonInputRef = useRef(null);
+  const [todoInput, setTodoInput] = useState("");
+  const [noteInput, setNoteInput] = useState("");
 
-  // Load tasks from Supabase
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
       if (cancelled) return;
-      if (error) {
-        console.error("로드 실패:", error);
-      } else {
-        setTasks(data || []);
-      }
+      if (error) console.error("로드 실패:", error);
+      else setTasks(data || []);
       setLoading(false);
     })();
     return () => {
@@ -32,93 +25,45 @@ export default function TodoApp({ supabase, session }) {
     };
   }, [supabase]);
 
-  useEffect(() => {
-    if (reasonFor && reasonInputRef.current) {
-      reasonInputRef.current.focus();
-    }
-  }, [reasonFor]);
-
   const addTask = async () => {
-    const text = input.trim();
-    if (!text) return;
-    setInput("");
+    const todo = todoInput.trim();
+    if (!todo) return;
+    const note = noteInput.trim() || null;
+    setTodoInput("");
+    setNoteInput("");
     const tempId = "temp-" + Date.now();
     const optimistic = {
       id: tempId,
-      text,
+      todo,
+      note,
       status: "active",
       created_at: new Date().toISOString(),
-      user_id: session.user.id,
     };
-    setTasks((prev) => [optimistic, ...prev]);
-
+    setTasks((prev) => [...prev, optimistic]);
     const { data, error } = await supabase
       .from("tasks")
-      .insert({ text, user_id: session.user.id })
+      .insert({ todo, note })
       .select()
       .single();
     if (error) {
-      console.error(error);
       setTasks((prev) => prev.filter((t) => t.id !== tempId));
-      alert("저장에 실패했어요: " + error.message);
+      alert("저장 실패: " + error.message);
     } else {
       setTasks((prev) => prev.map((t) => (t.id === tempId ? data : t)));
     }
   };
 
-  const completeTask = async (id) => {
-    const backup = tasks;
-    setTasks((prev) => prev.filter((t) => t.id !== id));
-    const { error } = await supabase.from("tasks").delete().eq("id", id);
-    if (error) {
-      setTasks(backup);
-      alert("삭제 실패: " + error.message);
-    }
-  };
-
-  const startParking = (id) => {
-    setReasonFor(id);
-    setReasonText("");
-  };
-
-  const confirmParking = async () => {
-    const reason = reasonText.trim();
-    if (!reason) return;
-    const id = reasonFor;
-    const parked_at = new Date().toISOString();
+  const toggleComplete = async (task) => {
+    const id = task.id;
+    const newStatus = task.status === "active" ? "completed" : "active";
+    const completed_at = newStatus === "completed" ? new Date().toISOString() : null;
     const backup = tasks;
     setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, status: "parked", reason, parked_at } : t
-      )
-    );
-    setReasonFor(null);
-    setReasonText("");
-    const { error } = await supabase
-      .from("tasks")
-      .update({ status: "parked", reason, parked_at })
-      .eq("id", id);
-    if (error) {
-      setTasks(backup);
-      alert("저장 실패: " + error.message);
-    }
-  };
-
-  const cancelParking = () => {
-    setReasonFor(null);
-    setReasonText("");
-  };
-
-  const reactivate = async (id) => {
-    const backup = tasks;
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, status: "active", reason: null, parked_at: null } : t
-      )
+      prev.map((t) => (t.id === id ? { ...t, status: newStatus, completed_at } : t))
     );
     const { error } = await supabase
       .from("tasks")
-      .update({ status: "active", reason: null, parked_at: null })
+      .update({ status: newStatus, completed_at })
       .eq("id", id);
     if (error) {
       setTasks(backup);
@@ -126,7 +71,7 @@ export default function TodoApp({ supabase, session }) {
     }
   };
 
-  const deleteParked = async (id) => {
+  const deleteTask = async (id) => {
     if (!confirm("이 항목을 영구 삭제할까요?")) return;
     const backup = tasks;
     setTasks((prev) => prev.filter((t) => t.id !== id));
@@ -137,8 +82,13 @@ export default function TodoApp({ supabase, session }) {
     }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const updateNote = async (id, note) => {
+    const value = note.trim() || null;
+    const { error } = await supabase
+      .from("tasks")
+      .update({ note: value })
+      .eq("id", id);
+    if (error) console.error(error);
   };
 
   const formatDate = (iso) => {
@@ -149,412 +99,567 @@ export default function TodoApp({ supabase, session }) {
     return `${d.getFullYear()}.${m}.${day}`;
   };
 
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
+
   const active = tasks.filter((t) => t.status === "active");
-  const parked = tasks.filter((t) => t.status === "parked");
+  const completed = tasks.filter((t) => t.status === "completed");
+  const total = active.length + completed.length;
+  const rate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
 
   return (
     <div className="page">
-      <div className="grain" />
-
       <div className="container">
-        <header className="masthead">
-          <div className="masthead-title">업무 노트</div>
-          <div className="masthead-right">
-            <span className="user-email">{session.user.email}</span>
-            <button className="signout" onClick={signOut}>
-              로그아웃
-            </button>
+        <header className="header">
+          <div>
+            <div className="brand">업무 노트</div>
+            <div className="brand-sub">{todayStr}</div>
           </div>
         </header>
 
-        <div className="input-row">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addTask()}
-            placeholder="떠오른 일을 적어보세요..."
-          />
-          <button
-            className="add-btn"
-            onClick={addTask}
-            disabled={!input.trim()}
-          >
-            추가 +
-          </button>
-        </div>
-
-        <div className="tabs">
-          <button
-            className={`tab ${view === "active" ? "active" : ""}`}
-            onClick={() => setView("active")}
-          >
-            진행 중<span className="tab-count">{active.length}</span>
-          </button>
-          <button
-            className={`tab ${view === "parked" ? "active" : ""}`}
-            onClick={() => setView("parked")}
-          >
-            보류<span className="tab-count">{parked.length}</span>
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="empty">
-            <div className="empty-quote">불러오는 중...</div>
-          </div>
-        ) : view === "active" ? (
-          active.length === 0 ? (
-            <div className="empty">
-              <div className="empty-quote">텅 빈 페이지.</div>
-              <div className="empty-sub">add an idea</div>
+        {/* Stats card */}
+        <section className="stats-card">
+          <div className="tag tag-orange">진행 현황</div>
+          <div className="stats-row">
+            <div>
+              <div className="stats-big">
+                완료율 <span className="accent">{rate}%</span>
+              </div>
+              <div className="stats-desc">
+                전체 <b>{total}</b>개 중 <b>{completed.length}</b>개가 완료되었습니다.
+              </div>
             </div>
+            <div className="stats-right">
+              <div className="stats-label">남은 작업</div>
+              <div className="stats-num">
+                {active.length}
+                <span className="accent stats-num-unit">개</span>
+              </div>
+            </div>
+          </div>
+          <div className="progress">
+            <div className="progress-fill" style={{ width: `${rate}%` }} />
+          </div>
+          <div className="progress-labels">
+            <span>0%</span>
+            <span>50%</span>
+            <span>100%</span>
+          </div>
+        </section>
+
+        {/* Quick add */}
+        <section className="add-card">
+          <div className="card-head">
+            <div className="tag tag-blue">새 할 일</div>
+            <h2>빠른 추가</h2>
+          </div>
+          <div className="add-form">
+            <input
+              type="text"
+              value={todoInput}
+              onChange={(e) => setTodoInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTask()}
+              placeholder="할 일을 입력하세요"
+              className="todo-input"
+            />
+            <input
+              type="text"
+              value={noteInput}
+              onChange={(e) => setNoteInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTask()}
+              placeholder="비고 (선택)"
+              className="note-input"
+            />
+            <button
+              onClick={addTask}
+              disabled={!todoInput.trim()}
+              className="add-btn"
+            >
+              + 추가
+            </button>
+          </div>
+        </section>
+
+        {/* Active table */}
+        <section className="table-card">
+          <div className="card-head">
+            <div className="tag tag-orange">진행 중</div>
+            <h2>
+              해야 할 일 <span className="count">{active.length}</span>
+            </h2>
+          </div>
+
+          {loading ? (
+            <div className="empty">불러오는 중...</div>
+          ) : active.length === 0 ? (
+            <div className="empty">아직 할 일이 없어요. 위에서 추가해보세요!</div>
           ) : (
-            active.map((t, idx) => (
-              <div key={t.id} className="task">
-                <div className="task-num">
-                  {String(idx + 1).padStart(2, "0")}
-                </div>
-                <div className="task-body">
-                  <div className="task-text">{t.text}</div>
-                  <div className="task-meta">
-                    added {formatDate(t.created_at)}
-                  </div>
-                  {reasonFor === t.id && (
-                    <div className="reason-input-row">
-                      <input
-                        ref={reasonInputRef}
-                        type="text"
-                        value={reasonText}
-                        onChange={(e) => setReasonText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") confirmParking();
-                          if (e.key === "Escape") cancelParking();
-                        }}
-                        placeholder="왜 못 했나요?"
-                      />
-                      <button
-                        className="mini-btn"
-                        onClick={confirmParking}
-                        disabled={!reasonText.trim()}
-                      >
-                        저장
-                      </button>
-                      <button className="mini-btn" onClick={cancelParking}>
-                        취소
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {reasonFor !== t.id && (
-                  <div className="task-actions">
-                    <button
-                      className="icon-btn done"
-                      onClick={() => completeTask(t.id)}
-                      title="완료"
-                    >
-                      ✓
-                    </button>
-                    <button
-                      className="icon-btn park"
-                      onClick={() => startParking(t.id)}
-                      title="못 했음"
-                    >
-                      ✗
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
-          )
-        ) : parked.length === 0 ? (
-          <div className="empty">
-            <div className="empty-quote">보류된 일이 없습니다.</div>
-            <div className="empty-sub">nothing parked</div>
-          </div>
-        ) : (
-          parked.map((t, idx) => (
-            <div key={t.id} className="task">
-              <div className="task-num">
-                {String(idx + 1).padStart(2, "0")}
-              </div>
-              <div className="task-body">
-                <div className="task-text">{t.text}</div>
-                <div className="task-meta">
-                  parked {formatDate(t.parked_at)}
-                </div>
-                <div className="reason-box">
-                  <div className="reason-label">사유</div>
-                  <div className="reason-text">{t.reason}</div>
-                </div>
-              </div>
-              <div className="task-actions">
-                <button
-                  className="icon-btn revive"
-                  onClick={() => reactivate(t.id)}
-                  title="다시 진행 중으로"
-                >
-                  ↺
-                </button>
-                <button
-                  className="icon-btn trash"
-                  onClick={() => deleteParked(t.id)}
-                  title="영구 삭제"
-                >
-                  ×
-                </button>
-              </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 56 }}>NO.</th>
+                    <th style={{ width: 110 }}>입력날짜</th>
+                    <th>TO-DO</th>
+                    <th style={{ width: "30%" }}>비고</th>
+                    <th style={{ width: 80, textAlign: "center" }}>완료</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {active.map((t, idx) => (
+                    <tr key={t.id}>
+                      <td className="cell-num">{idx + 1}</td>
+                      <td className="cell-date">{formatDate(t.created_at)}</td>
+                      <td className="cell-todo">{t.todo}</td>
+                      <td className="cell-note">
+                        <input
+                          type="text"
+                          defaultValue={t.note || ""}
+                          onBlur={(e) => updateNote(t.id, e.target.value)}
+                          placeholder="—"
+                        />
+                      </td>
+                      <td className="cell-check">
+                        <label className="checkbox">
+                          <input
+                            type="checkbox"
+                            checked={false}
+                            onChange={() => toggleComplete(t)}
+                          />
+                          <span className="checkmark" />
+                        </label>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))
-        )}
+          )}
+        </section>
 
-        <div className="footer">— 자동 저장 · 어디서든 같은 목록 —</div>
+        {/* Completed table */}
+        <section className="table-card">
+          <div className="card-head">
+            <div className="tag tag-green">완료</div>
+            <h2>
+              완료된 일 <span className="count">{completed.length}</span>
+            </h2>
+          </div>
+
+          {completed.length === 0 ? (
+            <div className="empty">아직 완료된 일이 없어요</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 56 }}>NO.</th>
+                    <th style={{ width: 110 }}>완료날짜</th>
+                    <th>TO-DO</th>
+                    <th style={{ width: "30%" }}>비고</th>
+                    <th style={{ width: 100, textAlign: "center" }}> </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completed.map((t, idx) => (
+                    <tr key={t.id} className="completed-row">
+                      <td className="cell-num">{idx + 1}</td>
+                      <td className="cell-date cell-date-done">
+                        {formatDate(t.completed_at)}
+                      </td>
+                      <td className="cell-todo cell-todo-done">{t.todo}</td>
+                      <td className="cell-note cell-note-done">{t.note || "—"}</td>
+                      <td className="cell-actions">
+                        <button
+                          onClick={() => toggleComplete(t)}
+                          className="icon-btn"
+                          title="다시 진행 중으로"
+                        >
+                          ↩
+                        </button>
+                        <button
+                          onClick={() => deleteTask(t.id)}
+                          className="icon-btn icon-danger"
+                          title="영구 삭제"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <footer className="footer">자동 저장 · 어디서든 같은 목록</footer>
       </div>
 
+      <style jsx global>{`
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+        * { box-sizing: border-box; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          background: #f5f7fa;
+          color: #0f172a;
+          font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -webkit-tap-highlight-color: transparent;
+        }
+      `}</style>
+
       <style jsx>{`
-        .page {
-          min-height: 100vh;
-          padding: 48px 24px 80px;
-          position: relative;
-        }
-        .grain {
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          opacity: 0.04;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-          z-index: 0;
-        }
+        .page { min-height: 100vh; padding: 32px 20px 60px; }
         .container {
-          max-width: 720px;
+          max-width: 1100px;
           margin: 0 auto;
-          position: relative;
-          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
         }
-        .masthead {
-          border-top: 3px double #2a2620;
-          border-bottom: 1px solid #2a2620;
-          padding: 18px 0 14px;
-          margin-bottom: 36px;
+
+        .header {
+          padding: 4px 4px 8px;
+        }
+        .brand {
+          font-size: 26px;
+          font-weight: 800;
+          letter-spacing: -0.5px;
+          color: #0f172a;
+        }
+        .brand-sub {
+          font-size: 13px;
+          color: #64748b;
+          margin-top: 2px;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .tag {
+          display: inline-block;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 4px 10px;
+          border-radius: 6px;
+          letter-spacing: 0.2px;
+        }
+        .tag-orange { background: #fff1e6; color: #ea580c; }
+        .tag-blue   { background: #e0f2fe; color: #0369a1; }
+        .tag-green  { background: #ecfdf5; color: #047857; }
+
+        /* Stats */
+        .stats-card {
+          background: white;
+          border-radius: 20px;
+          padding: 28px 32px 24px;
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04),
+                      0 8px 24px rgba(15, 23, 42, 0.04);
+          border: 1px solid #e2e8f0;
+        }
+        .stats-row {
           display: flex;
           justify-content: space-between;
-          align-items: baseline;
-          flex-wrap: wrap;
-          gap: 8px;
+          align-items: flex-end;
+          margin: 12px 0 20px;
+          gap: 20px;
         }
-        .masthead-title {
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
-          font-size: 36px;
-          font-weight: 600;
+        .stats-big {
+          font-size: 32px;
+          font-weight: 800;
+          letter-spacing: -1px;
+          color: #0f172a;
+          line-height: 1.1;
+        }
+        .accent { color: #fb923c; }
+        .stats-desc {
+          font-size: 13px;
+          color: #64748b;
+          margin-top: 6px;
+        }
+        .stats-desc b { color: #0f172a; font-weight: 700; }
+        .stats-right { text-align: right; }
+        .stats-label {
+          font-size: 12px;
+          color: #64748b;
+          margin-bottom: 2px;
+        }
+        .stats-num {
+          font-size: 30px;
+          font-weight: 800;
+          color: #0f172a;
           letter-spacing: -0.5px;
           line-height: 1;
         }
-        .masthead-right {
+        .stats-num-unit {
+          font-size: 16px;
+          font-weight: 700;
+          margin-left: 2px;
+        }
+        .progress {
+          width: 100%;
+          height: 8px;
+          background: #f1f5f9;
+          border-radius: 99px;
+          overflow: hidden;
+        }
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #fb923c, #f97316);
+          border-radius: 99px;
+          transition: width 0.4s ease;
+        }
+        .progress-labels {
           display: flex;
-          align-items: center;
-          gap: 12px;
+          justify-content: space-between;
+          font-size: 11px;
+          color: #94a3b8;
+          margin-top: 6px;
+          font-variant-numeric: tabular-nums;
         }
-        .user-email {
-          font-family: 'Cormorant Garamond', serif;
-          font-size: 13px;
-          font-style: italic;
-          color: rgba(42, 38, 32, 0.6);
+
+        /* Cards */
+        .add-card, .table-card {
+          background: white;
+          border-radius: 16px;
+          padding: 22px 24px;
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+          border: 1px solid #e2e8f0;
         }
-        .signout {
-          background: transparent;
-          border: 1px solid rgba(42, 38, 32, 0.3);
-          padding: 4px 10px;
-          font-size: 12px;
-          color: #2a2620;
-          cursor: pointer;
-          transition: all 0.2s;
+        .card-head { margin-bottom: 16px; }
+        h2 {
+          font-size: 16px;
+          font-weight: 700;
+          margin: 8px 0 0;
+          color: #0f172a;
         }
-        .signout:hover {
-          background: #2a2620;
-          color: #f5f1e8;
+        .count {
+          display: inline-block;
+          margin-left: 4px;
+          font-size: 14px;
+          color: #94a3b8;
+          font-weight: 600;
         }
-        .input-row {
-          display: flex;
-          gap: 0;
-          margin-bottom: 36px;
-          border-bottom: 1px solid #2a2620;
-          padding-bottom: 8px;
+
+        /* Add form */
+        .add-form {
+          display: grid;
+          grid-template-columns: 1.4fr 1fr auto;
+          gap: 10px;
         }
-        .input-row input {
-          flex: 1;
-          background: transparent;
-          border: none;
+        .add-form input {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 12px 14px;
+          font-size: 14px;
+          font-family: inherit;
+          color: #0f172a;
           outline: none;
-          font-size: 18px;
-          color: #2a2620;
-          padding: 8px 0;
+          transition: all 0.15s;
         }
-        .input-row input::placeholder {
-          color: rgba(42, 38, 32, 0.35);
-          font-style: italic;
+        .add-form input::placeholder { color: #94a3b8; }
+        .add-form input:focus {
+          background: white;
+          border-color: #fb923c;
+          box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.12);
         }
         .add-btn {
-          background: #2a2620;
-          color: #f5f1e8;
+          background: #fb923c;
+          color: white;
           border: none;
-          padding: 8px 20px;
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
-          font-size: 16px;
-          letter-spacing: 1px;
+          border-radius: 10px;
+          padding: 0 22px;
+          font-size: 14px;
+          font-weight: 700;
+          font-family: inherit;
           cursor: pointer;
-          transition: background 0.2s;
+          transition: all 0.15s;
+          white-space: nowrap;
         }
-        .add-btn:hover { background: #4a3f2f; }
-        .add-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-        .tabs {
-          display: flex;
-          margin-bottom: 32px;
-          border-bottom: 1px solid rgba(42, 38, 32, 0.2);
+        .add-btn:hover:not(:disabled) { background: #ea580c; }
+        .add-btn:disabled {
+          background: #cbd5e1;
+          cursor: not-allowed;
         }
-        .tab {
-          background: none;
-          border: none;
-          padding: 12px 20px 12px 0;
-          margin-right: 28px;
-          font-size: 15px;
-          color: rgba(42, 38, 32, 0.5);
-          cursor: pointer;
-          position: relative;
-          font-weight: 500;
-          transition: color 0.2s;
+
+        /* Table */
+        .table-wrap {
+          overflow-x: auto;
+          margin: 0 -24px -22px;
+          padding: 0 24px 6px;
         }
-        .tab:hover { color: rgba(42, 38, 32, 0.8); }
-        .tab.active { color: #2a2620; font-weight: 700; }
-        .tab.active::after {
-          content: '';
-          position: absolute;
-          left: 0;
-          right: 20px;
-          bottom: -1px;
-          height: 2px;
-          background: #2a2620;
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          min-width: 560px;
         }
-        .tab-count {
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
+        thead { background: #f8fafc; }
+        th {
+          text-align: left;
+          padding: 11px 14px;
+          font-size: 11px;
+          font-weight: 700;
+          color: #64748b;
+          letter-spacing: 0.5px;
+          border-top: 1px solid #e2e8f0;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        th:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+        th:last-child  { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+        td {
+          padding: 12px 14px;
+          font-size: 14px;
+          color: #0f172a;
+          border-bottom: 1px solid #f1f5f9;
+        }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr { transition: background 0.1s; }
+        tbody tr:hover { background: #fafbfc; }
+
+        .cell-num {
+          color: #94a3b8;
+          font-weight: 600;
           font-size: 13px;
-          margin-left: 6px;
-          opacity: 0.6;
+          font-variant-numeric: tabular-nums;
         }
-        .task {
-          padding: 18px 0;
-          border-bottom: 1px solid rgba(42, 38, 32, 0.12);
-          display: flex;
-          gap: 16px;
-          align-items: flex-start;
-          animation: fadeIn 0.3s ease;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .task-num {
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
-          font-size: 22px;
-          color: rgba(42, 38, 32, 0.4);
-          min-width: 32px;
-          line-height: 1.4;
-        }
-        .task-body { flex: 1; }
-        .task-text { font-size: 17px; line-height: 1.55; margin-bottom: 6px; }
-        .task-meta {
-          font-family: 'Cormorant Garamond', serif;
+        .cell-date {
+          color: #475569;
           font-size: 13px;
-          font-style: italic;
-          color: rgba(42, 38, 32, 0.5);
+          font-variant-numeric: tabular-nums;
         }
-        .task-actions { display: flex; gap: 8px; align-items: center; }
-        .icon-btn {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          border: 1px solid rgba(42, 38, 32, 0.25);
+        .cell-date-done { color: #047857; font-weight: 600; }
+        .cell-todo { font-weight: 500; word-break: keep-all; }
+        .cell-todo-done {
+          color: #94a3b8;
+          text-decoration: line-through;
+          text-decoration-thickness: 1.5px;
+        }
+        .cell-note input {
           background: transparent;
+          border: 1px solid transparent;
+          padding: 6px 9px;
+          font-size: 13px;
+          font-family: inherit;
+          width: 100%;
+          color: #64748b;
+          border-radius: 6px;
+          outline: none;
+          transition: all 0.12s;
+        }
+        .cell-note input:hover { background: #f8fafc; }
+        .cell-note input:focus {
+          background: white;
+          border-color: #cbd5e1;
+          color: #0f172a;
+        }
+        .cell-note input::placeholder { color: #cbd5e1; }
+        .cell-note-done {
+          color: #94a3b8;
+          font-size: 13px;
+          padding-left: 9px;
+        }
+        .cell-check { text-align: center; }
+        .cell-actions {
+          text-align: center;
+          white-space: nowrap;
+        }
+        .completed-row { background: #fcfdfc; }
+
+        /* Checkbox */
+        .checkbox {
+          position: relative;
+          display: inline-flex;
           cursor: pointer;
+          user-select: none;
+        }
+        .checkbox input {
+          position: absolute;
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+        .checkmark {
+          width: 22px;
+          height: 22px;
+          background: white;
+          border: 2px solid #cbd5e1;
+          border-radius: 6px;
+          transition: all 0.15s;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 14px;
-          color: #2a2620;
-          transition: all 0.2s;
         }
-        .icon-btn.done:hover { background: #3d5a3d; color: #f5f1e8; border-color: #3d5a3d; }
-        .icon-btn.park:hover { background: #8b4a3a; color: #f5f1e8; border-color: #8b4a3a; }
-        .icon-btn.revive:hover { background: #2a2620; color: #f5f1e8; border-color: #2a2620; }
-        .icon-btn.trash:hover { background: #8b4a3a; color: #f5f1e8; border-color: #8b4a3a; }
-        .reason-box {
-          margin-top: 10px;
-          padding: 12px 14px;
-          background: rgba(139, 74, 58, 0.06);
-          border-left: 2px solid #8b4a3a;
+        .checkbox:hover .checkmark {
+          border-color: #fb923c;
+          background: #fff7ed;
         }
-        .reason-label {
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
-          font-size: 12px;
-          letter-spacing: 2px;
-          text-transform: uppercase;
-          color: #8b4a3a;
-          margin-bottom: 4px;
+        .checkbox input:checked + .checkmark {
+          background: #fb923c;
+          border-color: #fb923c;
         }
-        .reason-text { font-size: 14px; line-height: 1.5; color: rgba(42, 38, 32, 0.8); }
-        .reason-input-row { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
-        .reason-input-row input {
-          flex: 1;
-          min-width: 200px;
-          background: rgba(139, 74, 58, 0.06);
-          border: none;
-          border-left: 2px solid #8b4a3a;
-          padding: 10px 12px;
-          font-size: 14px;
-          color: #2a2620;
-          outline: none;
+        .checkbox input:checked + .checkmark::after {
+          content: '';
+          width: 5px;
+          height: 10px;
+          border: solid white;
+          border-width: 0 2.5px 2.5px 0;
+          transform: rotate(45deg);
+          margin-top: -2px;
         }
-        .reason-input-row input::placeholder {
-          color: rgba(42, 38, 32, 0.4);
-          font-style: italic;
-        }
-        .mini-btn {
+
+        .icon-btn {
           background: transparent;
-          border: 1px solid rgba(42, 38, 32, 0.3);
-          padding: 6px 12px;
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
-          font-size: 13px;
-          color: #2a2620;
+          border: 1px solid #e2e8f0;
+          color: #64748b;
+          width: 30px;
+          height: 30px;
+          border-radius: 6px;
           cursor: pointer;
-          transition: all 0.2s;
+          font-size: 14px;
+          font-family: inherit;
+          margin: 0 2px;
+          transition: all 0.15s;
         }
-        .mini-btn:hover { background: #2a2620; color: #f5f1e8; }
+        .icon-btn:hover {
+          background: #f1f5f9;
+          color: #0f172a;
+        }
+        .icon-danger:hover {
+          background: #fef2f2;
+          color: #dc2626;
+          border-color: #fecaca;
+        }
+
         .empty {
           text-align: center;
-          padding: 60px 20px;
-          color: rgba(42, 38, 32, 0.4);
+          padding: 36px 20px;
+          color: #94a3b8;
+          font-size: 14px;
         }
-        .empty-quote {
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
-          font-size: 22px;
-          margin-bottom: 8px;
-        }
-        .empty-sub { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }
+
         .footer {
-          margin-top: 60px;
-          padding-top: 20px;
-          border-top: 1px solid rgba(42, 38, 32, 0.15);
           text-align: center;
-          font-family: 'Cormorant Garamond', serif;
-          font-style: italic;
-          font-size: 13px;
-          color: rgba(42, 38, 32, 0.5);
+          margin-top: 8px;
+          padding: 8px;
+          font-size: 12px;
+          color: #94a3b8;
+        }
+
+        @media (max-width: 720px) {
+          .page { padding: 20px 12px 40px; }
+          .container { gap: 14px; }
+          .stats-card { padding: 22px 20px 18px; border-radius: 16px; }
+          .stats-row { flex-direction: column; align-items: flex-start; gap: 14px; }
+          .stats-right { text-align: left; }
+          .stats-big { font-size: 26px; }
+          .stats-num { font-size: 24px; }
+          .add-card, .table-card { padding: 18px; border-radius: 14px; }
+          .add-form { grid-template-columns: 1fr; }
+          .add-form input, .add-btn { padding: 12px 14px; font-size: 15px; }
+          .table-wrap { margin: 0 -18px -18px; padding: 0 18px 4px; }
+          th, td { padding: 10px 10px; font-size: 13px; }
+          .cell-note input { font-size: 12px; }
         }
       `}</style>
     </div>
