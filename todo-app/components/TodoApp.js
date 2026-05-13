@@ -104,8 +104,6 @@ export default function TodoApp({ supabase }) {
 
   const active = tasks.filter((t) => t.status === "active");
   const completed = tasks.filter((t) => t.status === "completed");
-  const total = active.length + completed.length;
-  const rate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
 
   return (
     <div className="page">
@@ -116,36 +114,6 @@ export default function TodoApp({ supabase }) {
             <div className="brand-sub">{todayStr}</div>
           </div>
         </header>
-
-        {/* Stats card */}
-        <section className="stats-card">
-          <div className="tag tag-orange">진행 현황</div>
-          <div className="stats-row">
-            <div>
-              <div className="stats-big">
-                완료율 <span className="accent">{rate}%</span>
-              </div>
-              <div className="stats-desc">
-                전체 <b>{total}</b>개 중 <b>{completed.length}</b>개가 완료되었습니다.
-              </div>
-            </div>
-            <div className="stats-right">
-              <div className="stats-label">남은 작업</div>
-              <div className="stats-num">
-                {active.length}
-                <span className="accent stats-num-unit">개</span>
-              </div>
-            </div>
-          </div>
-          <div className="progress">
-            <div className="progress-fill" style={{ width: `${rate}%` }} />
-          </div>
-          <div className="progress-labels">
-            <span>0%</span>
-            <span>50%</span>
-            <span>100%</span>
-          </div>
-        </section>
 
         {/* Quick add */}
         <section className="add-card">
@@ -320,9 +288,7 @@ export default function TodoApp({ supabase }) {
           gap: 18px;
         }
 
-        .header {
-          padding: 4px 4px 8px;
-        }
+        .header { padding: 4px 4px 8px; }
         .brand {
           font-size: 26px;
           font-weight: 800;
@@ -348,77 +314,6 @@ export default function TodoApp({ supabase }) {
         .tag-blue   { background: #e0f2fe; color: #0369a1; }
         .tag-green  { background: #ecfdf5; color: #047857; }
 
-        /* Stats */
-        .stats-card {
-          background: white;
-          border-radius: 20px;
-          padding: 28px 32px 24px;
-          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04),
-                      0 8px 24px rgba(15, 23, 42, 0.04);
-          border: 1px solid #e2e8f0;
-        }
-        .stats-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          margin: 12px 0 20px;
-          gap: 20px;
-        }
-        .stats-big {
-          font-size: 32px;
-          font-weight: 800;
-          letter-spacing: -1px;
-          color: #0f172a;
-          line-height: 1.1;
-        }
-        .accent { color: #fb923c; }
-        .stats-desc {
-          font-size: 13px;
-          color: #64748b;
-          margin-top: 6px;
-        }
-        .stats-desc b { color: #0f172a; font-weight: 700; }
-        .stats-right { text-align: right; }
-        .stats-label {
-          font-size: 12px;
-          color: #64748b;
-          margin-bottom: 2px;
-        }
-        .stats-num {
-          font-size: 30px;
-          font-weight: 800;
-          color: #0f172a;
-          letter-spacing: -0.5px;
-          line-height: 1;
-        }
-        .stats-num-unit {
-          font-size: 16px;
-          font-weight: 700;
-          margin-left: 2px;
-        }
-        .progress {
-          width: 100%;
-          height: 8px;
-          background: #f1f5f9;
-          border-radius: 99px;
-          overflow: hidden;
-        }
-        .progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #fb923c, #f97316);
-          border-radius: 99px;
-          transition: width 0.4s ease;
-        }
-        .progress-labels {
-          display: flex;
-          justify-content: space-between;
-          font-size: 11px;
-          color: #94a3b8;
-          margin-top: 6px;
-          font-variant-numeric: tabular-nums;
-        }
-
-        /* Cards */
         .add-card, .table-card {
           background: white;
           border-radius: 16px;
@@ -441,7 +336,6 @@ export default function TodoApp({ supabase }) {
           font-weight: 600;
         }
 
-        /* Add form */
         .add-form {
           display: grid;
           grid-template-columns: 1.4fr 1fr auto;
@@ -478,12 +372,8 @@ export default function TodoApp({ supabase }) {
           white-space: nowrap;
         }
         .add-btn:hover:not(:disabled) { background: #ea580c; }
-        .add-btn:disabled {
-          background: #cbd5e1;
-          cursor: not-allowed;
-        }
+        .add-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
 
-        /* Table */
         .table-wrap {
           overflow-x: auto;
           margin: 0 -24px -22px;
@@ -505,8 +395,6 @@ export default function TodoApp({ supabase }) {
           border-top: 1px solid #e2e8f0;
           border-bottom: 1px solid #e2e8f0;
         }
-        th:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
-        th:last-child  { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
         td {
           padding: 12px 14px;
           font-size: 14px;
@@ -517,17 +405,8 @@ export default function TodoApp({ supabase }) {
         tbody tr { transition: background 0.1s; }
         tbody tr:hover { background: #fafbfc; }
 
-        .cell-num {
-          color: #94a3b8;
-          font-weight: 600;
-          font-size: 13px;
-          font-variant-numeric: tabular-nums;
-        }
-        .cell-date {
-          color: #475569;
-          font-size: 13px;
-          font-variant-numeric: tabular-nums;
-        }
+        .cell-num { color: #94a3b8; font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+        .cell-date { color: #475569; font-size: 13px; font-variant-numeric: tabular-nums; }
         .cell-date-done { color: #047857; font-weight: 600; }
         .cell-todo { font-weight: 500; word-break: keep-all; }
         .cell-todo-done {
@@ -554,19 +433,11 @@ export default function TodoApp({ supabase }) {
           color: #0f172a;
         }
         .cell-note input::placeholder { color: #cbd5e1; }
-        .cell-note-done {
-          color: #94a3b8;
-          font-size: 13px;
-          padding-left: 9px;
-        }
+        .cell-note-done { color: #94a3b8; font-size: 13px; padding-left: 9px; }
         .cell-check { text-align: center; }
-        .cell-actions {
-          text-align: center;
-          white-space: nowrap;
-        }
+        .cell-actions { text-align: center; white-space: nowrap; }
         .completed-row { background: #fcfdfc; }
 
-        /* Checkbox */
         .checkbox {
           position: relative;
           display: inline-flex;
@@ -649,11 +520,6 @@ export default function TodoApp({ supabase }) {
         @media (max-width: 720px) {
           .page { padding: 20px 12px 40px; }
           .container { gap: 14px; }
-          .stats-card { padding: 22px 20px 18px; border-radius: 16px; }
-          .stats-row { flex-direction: column; align-items: flex-start; gap: 14px; }
-          .stats-right { text-align: left; }
-          .stats-big { font-size: 26px; }
-          .stats-num { font-size: 24px; }
           .add-card, .table-card { padding: 18px; border-radius: 14px; }
           .add-form { grid-template-columns: 1fr; }
           .add-form input, .add-btn { padding: 12px 14px; font-size: 15px; }
