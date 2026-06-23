@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 
+const CATEGORIES = [
+  { name: "사업지원팀", bg: "#fff1e6", color: "#c2410c" },
+  { name: "구매파트", bg: "#e0f2fe", color: "#0369a1" },
+  { name: "사업관리파트", bg: "#ecfdf5", color: "#047857" },
+  { name: "AI 프로그램", bg: "#f5f3ff", color: "#6d28d9" },
+];
+
 export default function TodoApp({ supabase }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [todoInput, setTodoInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
+  const [catInput, setCatInput] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -27,22 +35,35 @@ export default function TodoApp({ supabase }) {
 
   const addTask = async () => {
     const todo = todoInput.trim();
-    if (!todo) return;
+    if (!todo) {
+      alert("할 일을 입력해주세요");
+      return;
+    }
+    if (!catInput) {
+      alert("분류를 선택해주세요");
+      return;
+    }
     const note = noteInput.trim() || null;
+    const category = catInput;
+
     setTodoInput("");
     setNoteInput("");
+    // 분류는 유지 — 같은 분류 연속 추가 편하게
+
     const tempId = "temp-" + Date.now();
     const optimistic = {
       id: tempId,
       todo,
       note,
+      category,
       status: "active",
       created_at: new Date().toISOString(),
     };
     setTasks((prev) => [...prev, optimistic]);
+
     const { data, error } = await supabase
       .from("tasks")
-      .insert({ todo, note })
+      .insert({ todo, note, category })
       .select()
       .single();
     if (error) {
@@ -99,11 +120,18 @@ export default function TodoApp({ supabase }) {
     return `${d.getFullYear()}.${m}.${day}`;
   };
 
+  const getCatStyle = (name) =>
+    CATEGORIES.find((c) => c.name === name) || CATEGORIES[0];
+
   const today = new Date();
   const todayStr = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
 
-  const active = tasks.filter((t) => t.status === "active");
-  const completed = tasks.filter((t) => t.status === "completed");
+  const active = tasks
+    .filter((t) => t.status === "active")
+    .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+  const completed = tasks
+    .filter((t) => t.status === "completed")
+    .sort((a, b) => (b.completed_at || "").localeCompare(a.completed_at || ""));
 
   return (
     <div className="page">
@@ -138,166 +166,204 @@ export default function TodoApp({ supabase }) {
               placeholder="비고 (선택)"
               className="note-input"
             />
+            <select
+              value={catInput}
+              onChange={(e) => setCatInput(e.target.value)}
+              className={`cat-select ${!catInput ? "empty" : ""}`}
+            >
+              <option value="">분류 선택 *</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
             <button
               onClick={addTask}
-              disabled={!todoInput.trim()}
+              disabled={!todoInput.trim() || !catInput}
               className="add-btn"
             >
               + 추가
             </button>
           </div>
+          <div className="add-hint">분류는 꼭 선택해야 추가돼요</div>
         </section>
 
-        {/* Active table */}
-        <section className="table-card">
-          <div className="card-head">
-            <div className="tag tag-orange">진행 중</div>
-            <h2>
-              해야 할 일 <span className="count">{active.length}</span>
-            </h2>
-          </div>
-
-          {loading ? (
+        {loading ? (
+          <section className="table-card">
             <div className="empty">불러오는 중...</div>
-          ) : active.length === 0 ? (
-            <div className="empty">아직 할 일이 없어요. 위에서 추가해보세요!</div>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 56 }}>NO.</th>
-                    <th style={{ width: 110 }}>입력날짜</th>
-                    <th>TO-DO</th>
-                    <th style={{ width: "30%" }}>비고</th>
-                    <th style={{ width: 120, textAlign: "center" }}>완료 / 삭제</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {active.map((t, idx) => (
-                    <tr key={t.id}>
-                      <td className="cell-num">{idx + 1}</td>
-                      <td className="cell-date">{formatDate(t.created_at)}</td>
-                      <td className="cell-todo">{t.todo}</td>
-                      <td className="cell-note">
-                        <input
-                          type="text"
-                          defaultValue={t.note || ""}
-                          onBlur={(e) => updateNote(t.id, e.target.value)}
-                          placeholder="—"
-                        />
-                      </td>
-                      <td className="cell-check">
-                        <div className="check-actions">
-                          <label className="checkbox" title="완료">
-                            <input
-                              type="checkbox"
-                              checked={false}
-                              onChange={() => toggleComplete(t)}
-                            />
-                            <span className="checkmark" />
-                          </label>
-                          <button
-                            onClick={() => deleteTask(t.id)}
-                            className="icon-btn icon-danger"
-                            title="삭제"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+          </section>
+        ) : (
+          <>
+            {/* 카테고리별 카드 4개 */}
+            {CATEGORIES.map((cat) => {
+              const catTasks = active.filter((t) => t.category === cat.name);
+              return (
+                <section
+                  key={cat.name}
+                  className="table-card cat-card"
+                  style={{ borderLeftColor: cat.color }}
+                >
+                  <div className="card-head cat-head">
+                    <span
+                      className="tag"
+                      style={{ background: cat.bg, color: cat.color }}
+                    >
+                      {cat.name}
+                    </span>
+                    <span className="count">{catTasks.length}건</span>
+                  </div>
 
-        {/* Completed table */}
-        <section className="table-card">
-          <div className="card-head">
-            <div className="tag tag-green">완료</div>
-            <h2>
-              완료된 일 <span className="count">{completed.length}</span>
-            </h2>
-          </div>
+                  {catTasks.length === 0 ? (
+                    <div className="empty">이 분류엔 진행 중인 할 일이 없어요</div>
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th style={{ width: 56 }}>NO.</th>
+                            <th style={{ width: 110 }}>입력날짜</th>
+                            <th>TO-DO</th>
+                            <th style={{ width: "30%" }}>비고</th>
+                            <th style={{ width: 120, textAlign: "center" }}>
+                              완료 / 삭제
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {catTasks.map((t, idx) => (
+                            <tr key={t.id}>
+                              <td className="cell-num">{idx + 1}</td>
+                              <td className="cell-date">{formatDate(t.created_at)}</td>
+                              <td className="cell-todo">{t.todo}</td>
+                              <td className="cell-note">
+                                <input
+                                  type="text"
+                                  defaultValue={t.note || ""}
+                                  onBlur={(e) => updateNote(t.id, e.target.value)}
+                                  placeholder="—"
+                                />
+                              </td>
+                              <td className="cell-check">
+                                <div className="check-actions">
+                                  <label className="checkbox" title="완료">
+                                    <input
+                                      type="checkbox"
+                                      checked={false}
+                                      onChange={() => toggleComplete(t)}
+                                    />
+                                    <span className="checkmark" />
+                                  </label>
+                                  <button
+                                    onClick={() => deleteTask(t.id)}
+                                    className="icon-btn icon-danger"
+                                    title="삭제"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
 
-          {completed.length === 0 ? (
-            <div className="empty">아직 완료된 일이 없어요</div>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 56 }}>NO.</th>
-                    <th style={{ width: 110 }}>완료날짜</th>
-                    <th>TO-DO</th>
-                    <th style={{ width: "30%" }}>비고</th>
-                    <th style={{ width: 100, textAlign: "center" }}> </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {completed.map((t, idx) => (
-                    <tr key={t.id} className="completed-row">
-                      <td className="cell-num">{idx + 1}</td>
-                      <td className="cell-date cell-date-done">
-                        {formatDate(t.completed_at)}
-                      </td>
-                      <td className="cell-todo cell-todo-done">{t.todo}</td>
-                      <td className="cell-note cell-note-done">{t.note || "—"}</td>
-                      <td className="cell-actions">
-                        <button
-                          onClick={() => toggleComplete(t)}
-                          className="icon-btn"
-                          title="다시 진행 중으로"
-                        >
-                          ↩
-                        </button>
-                        <button
-                          onClick={() => deleteTask(t.id)}
-                          className="icon-btn icon-danger"
-                          title="영구 삭제"
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+            {/* Completed table */}
+            <section className="table-card">
+              <div className="card-head">
+                <div className="tag tag-green">완료</div>
+                <h2>
+                  완료된 일 <span className="count">{completed.length}</span>
+                </h2>
+              </div>
 
-        <footer className="footer">자동 저장 · 어디서든 같은 목록</footer>
+              {completed.length === 0 ? (
+                <div className="empty">아직 완료된 일이 없어요</div>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 56 }}>NO.</th>
+                        <th style={{ width: 110 }}>완료날짜</th>
+                        <th style={{ width: 120 }}>분류</th>
+                        <th>TO-DO</th>
+                        <th style={{ width: "25%" }}>비고</th>
+                        <th style={{ width: 100, textAlign: "center" }}> </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {completed.map((t, idx) => {
+                        const c = getCatStyle(t.category);
+                        return (
+                          <tr key={t.id} className="completed-row">
+                            <td className="cell-num">{idx + 1}</td>
+                            <td className="cell-date cell-date-done">
+                              {formatDate(t.completed_at)}
+                            </td>
+                            <td>
+                              {t.category && (
+                                <span
+                                  className="cell-cat"
+                                  style={{ background: c.bg, color: c.color }}
+                                >
+                                  {t.category}
+                                </span>
+                              )}
+                            </td>
+                            <td className="cell-todo cell-todo-done">{t.todo}</td>
+                            <td className="cell-note cell-note-done">
+                              {t.note || "—"}
+                            </td>
+                            <td className="cell-actions">
+                              <button
+                                onClick={() => toggleComplete(t)}
+                                className="icon-btn"
+                                title="다시 진행 중으로"
+                              >
+                                ↩
+                              </button>
+                              <button
+                                onClick={() => deleteTask(t.id)}
+                                className="icon-btn icon-danger"
+                                title="삭제"
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        <div className="footer">자동 저장 · 어디서든 같은 목록</div>
       </div>
 
-      <style jsx global>{`
-        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
-        * { box-sizing: border-box; }
-        html, body {
-          margin: 0;
-          padding: 0;
-          background: #f5f7fa;
-          color: #0f172a;
-          font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
-          -webkit-font-smoothing: antialiased;
-          -webkit-tap-highlight-color: transparent;
-        }
-      `}</style>
-
       <style jsx>{`
-        .page { min-height: 100vh; padding: 32px 20px 60px; }
+        .page {
+          min-height: 100vh;
+          padding: 28px 18px 60px;
+        }
         .container {
-          max-width: 1100px;
+          max-width: 1200px;
           margin: 0 auto;
           display: flex;
           flex-direction: column;
-          gap: 18px;
+          gap: 16px;
         }
 
-        .header { padding: 4px 4px 8px; }
+        .header { padding: 4px 4px 6px; }
         .brand {
           font-size: 26px;
           font-weight: 800;
@@ -330,7 +396,16 @@ export default function TodoApp({ supabase }) {
           box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
           border: 1px solid #e2e8f0;
         }
-        .card-head { margin-bottom: 16px; }
+        .cat-card {
+          border-left-width: 4px;
+          border-left-style: solid;
+        }
+        .card-head { margin-bottom: 14px; }
+        .cat-head {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
         h2 {
           font-size: 16px;
           font-weight: 700;
@@ -339,18 +414,21 @@ export default function TodoApp({ supabase }) {
         }
         .count {
           display: inline-block;
-          margin-left: 4px;
           font-size: 14px;
           color: #94a3b8;
           font-weight: 600;
+          margin-left: 4px;
+        }
+        .cat-head .count {
+          margin-left: 0;
         }
 
         .add-form {
           display: grid;
-          grid-template-columns: 1.4fr 1fr auto;
+          grid-template-columns: 1.3fr 1fr 180px auto;
           gap: 10px;
         }
-        .add-form input {
+        .add-form input, .add-form select {
           background: #f8fafc;
           border: 1px solid #e2e8f0;
           border-radius: 10px;
@@ -362,11 +440,13 @@ export default function TodoApp({ supabase }) {
           transition: all 0.15s;
         }
         .add-form input::placeholder { color: #94a3b8; }
-        .add-form input:focus {
+        .add-form input:focus, .add-form select:focus {
           background: white;
           border-color: #fb923c;
           box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.12);
         }
+        .cat-select { cursor: pointer; }
+        .cat-select.empty { color: #94a3b8; }
         .add-btn {
           background: #fb923c;
           color: white;
@@ -382,6 +462,12 @@ export default function TodoApp({ supabase }) {
         }
         .add-btn:hover:not(:disabled) { background: #ea580c; }
         .add-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .add-hint {
+          margin-top: 10px;
+          font-size: 12px;
+          color: #94a3b8;
+          text-align: right;
+        }
 
         .table-wrap {
           overflow-x: auto;
@@ -391,7 +477,7 @@ export default function TodoApp({ supabase }) {
         table {
           width: 100%;
           border-collapse: collapse;
-          min-width: 560px;
+          min-width: 720px;
         }
         thead { background: #f8fafc; }
         th {
@@ -414,14 +500,30 @@ export default function TodoApp({ supabase }) {
         tbody tr { transition: background 0.1s; }
         tbody tr:hover { background: #fafbfc; }
 
-        .cell-num { color: #94a3b8; font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
-        .cell-date { color: #475569; font-size: 13px; font-variant-numeric: tabular-nums; }
+        .cell-num {
+          color: #94a3b8;
+          font-weight: 600;
+          font-size: 13px;
+          font-variant-numeric: tabular-nums;
+        }
+        .cell-date {
+          color: #475569;
+          font-size: 13px;
+          font-variant-numeric: tabular-nums;
+        }
         .cell-date-done { color: #047857; font-weight: 600; }
         .cell-todo { font-weight: 500; word-break: keep-all; }
         .cell-todo-done {
           color: #94a3b8;
           text-decoration: line-through;
           text-decoration-thickness: 1.5px;
+        }
+        .cell-cat {
+          display: inline-block;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 9px;
+          border-radius: 5px;
         }
         .cell-note input {
           background: transparent;
@@ -442,7 +544,11 @@ export default function TodoApp({ supabase }) {
           color: #0f172a;
         }
         .cell-note input::placeholder { color: #cbd5e1; }
-        .cell-note-done { color: #94a3b8; font-size: 13px; padding-left: 9px; }
+        .cell-note-done {
+          color: #94a3b8;
+          font-size: 13px;
+          padding-left: 9px;
+        }
         .cell-check { text-align: center; }
         .cell-actions { text-align: center; white-space: nowrap; }
         .check-actions {
@@ -476,15 +582,15 @@ export default function TodoApp({ supabase }) {
           justify-content: center;
         }
         .checkbox:hover .checkmark {
-          border-color: #fb923c;
-          background: #fff7ed;
+          border-color: #10b981;
+          background: #f0fdf4;
         }
         .checkbox input:checked + .checkmark {
-          background: #fb923c;
-          border-color: #fb923c;
+          background: #10b981;
+          border-color: #10b981;
         }
         .checkbox input:checked + .checkmark::after {
-          content: '';
+          content: "";
           width: 5px;
           height: 10px;
           border: solid white;
@@ -518,9 +624,9 @@ export default function TodoApp({ supabase }) {
 
         .empty {
           text-align: center;
-          padding: 36px 20px;
+          padding: 30px 20px;
           color: #94a3b8;
-          font-size: 14px;
+          font-size: 13px;
         }
 
         .footer {
@@ -532,12 +638,16 @@ export default function TodoApp({ supabase }) {
         }
 
         @media (max-width: 720px) {
-          .page { padding: 20px 12px 40px; }
-          .container { gap: 14px; }
-          .add-card, .table-card { padding: 18px; border-radius: 14px; }
+          .page { padding: 18px 12px 40px; }
+          .container { gap: 12px; }
+          .add-card, .table-card { padding: 16px; border-radius: 14px; }
           .add-form { grid-template-columns: 1fr; }
-          .add-form input, .add-btn { padding: 12px 14px; font-size: 15px; }
-          .table-wrap { margin: 0 -18px -18px; padding: 0 18px 4px; }
+          .add-form input, .add-form select, .add-btn {
+            padding: 13px 14px;
+            font-size: 15px;
+          }
+          .add-hint { text-align: center; }
+          .table-wrap { margin: 0 -16px -16px; padding: 0 16px 4px; }
           th, td { padding: 10px 10px; font-size: 13px; }
           .cell-note input { font-size: 12px; }
         }
