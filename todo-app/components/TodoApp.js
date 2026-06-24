@@ -153,12 +153,8 @@ export default function TodoApp({ supabase }) {
   };
 
   const updateNote = async (id, note) => {
-    const value = note.trim() || null;
-    const { error } = await supabase
-      .from("tasks")
-      .update({ note: value })
-      .eq("id", id);
-    if (error) console.error(error);
+    // 더 이상 사용 안 함 (편집은 ✎ 버튼으로만 가능)
+    return;
   };
 
   const formatDate = (iso) => {
@@ -370,12 +366,7 @@ export default function TodoApp({ supabase }) {
                                   <td className="cell-date">{formatDate(t.created_at)}</td>
                                   <td className="cell-todo">{t.todo}</td>
                                   <td className="cell-note">
-                                    <input
-                                      type="text"
-                                      defaultValue={t.note || ""}
-                                      onBlur={(e) => updateNote(t.id, e.target.value)}
-                                      placeholder="—"
-                                    />
+                                    {t.note || <span className="cell-note-empty">—</span>}
                                   </td>
                                   <td className="cell-check">
                                     <div className="check-actions">
@@ -604,6 +595,7 @@ export default function TodoApp({ supabase }) {
           color: #0f172a;
           outline: none;
           transition: all 0.15s;
+          text-align: left;
         }
         .add-form input::placeholder { color: #94a3b8; }
         .add-form input:focus, .add-form select:focus {
@@ -691,6 +683,11 @@ export default function TodoApp({ supabase }) {
           padding: 3px 9px;
           border-radius: 5px;
         }
+        .cell-note {
+          color: #64748b;
+          font-size: 13px;
+        }
+        .cell-note-empty { color: #cbd5e1; }
         .cell-note input {
           background: transparent;
           border: 1px solid transparent;
