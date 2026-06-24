@@ -350,10 +350,27 @@ export default function TodoApp({ supabase }) {
         <div className="footer">자동 저장 · 어디서든 같은 목록</div>
       </div>
 
+      {/* 글로벌 스타일 - Pretendard 폰트 & 배경 */}
+      <style jsx global>{`
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+        * { box-sizing: border-box; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          background: #f5f7fa !important;
+          color: #0f172a;
+          font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif !important;
+          -webkit-font-smoothing: antialiased;
+          -webkit-tap-highlight-color: transparent;
+        }
+      `}</style>
+
       <style jsx>{`
         .page {
           min-height: 100vh;
           padding: 28px 18px 60px;
+          background: #f5f7fa;
+          font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
         }
         .container {
           max-width: 1200px;
