@@ -16,6 +16,10 @@ export default function TodoApp({ supabase }) {
   const [noteInput, setNoteInput] = useState("");
   const [catInput, setCatInput] = useState("");
 
+  // 편집 상태
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({ todo: "", note: "", category: "" });
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -48,7 +52,6 @@ export default function TodoApp({ supabase }) {
 
     setTodoInput("");
     setNoteInput("");
-    // 분류는 유지 — 같은 분류 연속 추가 편하게
 
     const tempId = "temp-" + Date.now();
     const optimistic = {
@@ -103,6 +106,52 @@ export default function TodoApp({ supabase }) {
     }
   };
 
+  const startEdit = (task) => {
+    setEditingId(task.id);
+    setEditDraft({
+      todo: task.todo || "",
+      note: task.note || "",
+      category: task.category || "",
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditDraft({ todo: "", note: "", category: "" });
+  };
+
+  const saveEdit = async () => {
+    const id = editingId;
+    const todo = editDraft.todo.trim();
+    const note = editDraft.note.trim() || null;
+    const category = editDraft.category;
+
+    if (!todo) {
+      alert("할 일을 입력해주세요");
+      return;
+    }
+    if (!category) {
+      alert("분류를 선택해주세요");
+      return;
+    }
+
+    const backup = tasks;
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, todo, note, category } : t))
+    );
+    setEditingId(null);
+    setEditDraft({ todo: "", note: "", category: "" });
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ todo, note, category })
+      .eq("id", id);
+    if (error) {
+      setTasks(backup);
+      alert("저장 실패: " + error.message);
+    }
+  };
+
   const updateNote = async (id, note) => {
     const value = note.trim() || null;
     const { error } = await supabase
@@ -132,6 +181,87 @@ export default function TodoApp({ supabase }) {
   const completed = tasks
     .filter((t) => t.status === "completed")
     .sort((a, b) => (b.completed_at || "").localeCompare(a.completed_at || ""));
+
+  // 편집 행 렌더링
+  const renderEditRow = (t, idx, dateStr, isCompleted = false) => (
+    <tr key={t.id} className="editing-row">
+      <td className="cell-num">{idx + 1}</td>
+      <td className="cell-date">{dateStr}</td>
+      {isCompleted && (
+        <td>
+          <select
+            value={editDraft.category}
+            onChange={(e) =>
+              setEditDraft((prev) => ({ ...prev, category: e.target.value }))
+            }
+            className="edit-input edit-select-cat"
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </td>
+      )}
+      <td className="cell-todo edit-cell">
+        <input
+          type="text"
+          value={editDraft.todo}
+          onChange={(e) =>
+            setEditDraft((prev) => ({ ...prev, todo: e.target.value }))
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveEdit();
+            if (e.key === "Escape") cancelEdit();
+          }}
+          className="edit-input"
+          autoFocus
+        />
+        {!isCompleted && (
+          <select
+            value={editDraft.category}
+            onChange={(e) =>
+              setEditDraft((prev) => ({ ...prev, category: e.target.value }))
+            }
+            className="edit-input edit-select-cat"
+            style={{ marginTop: 6 }}
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </td>
+      <td className="cell-note edit-cell">
+        <input
+          type="text"
+          value={editDraft.note}
+          onChange={(e) =>
+            setEditDraft((prev) => ({ ...prev, note: e.target.value }))
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveEdit();
+            if (e.key === "Escape") cancelEdit();
+          }}
+          placeholder="비고 (선택)"
+          className="edit-input"
+        />
+      </td>
+      <td className="cell-actions">
+        <div className="check-actions">
+          <button onClick={saveEdit} className="icon-btn save-btn" title="저장">
+            ✓
+          </button>
+          <button onClick={cancelEdit} className="icon-btn" title="취소">
+            ✕
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
 
   return (
     <div className="page">
@@ -225,46 +355,57 @@ export default function TodoApp({ supabase }) {
                             <th style={{ width: 110 }}>입력날짜</th>
                             <th>TO-DO</th>
                             <th style={{ width: "30%" }}>비고</th>
-                            <th style={{ width: 120, textAlign: "center" }}>
-                              완료 / 삭제
+                            <th style={{ width: 160, textAlign: "center" }}>
+                              완료 / 수정 / 삭제
                             </th>
                           </tr>
                         </thead>
                         <tbody>
-                          {catTasks.map((t, idx) => (
-                            <tr key={t.id}>
-                              <td className="cell-num">{idx + 1}</td>
-                              <td className="cell-date">{formatDate(t.created_at)}</td>
-                              <td className="cell-todo">{t.todo}</td>
-                              <td className="cell-note">
-                                <input
-                                  type="text"
-                                  defaultValue={t.note || ""}
-                                  onBlur={(e) => updateNote(t.id, e.target.value)}
-                                  placeholder="—"
-                                />
-                              </td>
-                              <td className="cell-check">
-                                <div className="check-actions">
-                                  <label className="checkbox" title="완료">
+                          {catTasks.map((t, idx) =>
+                            editingId === t.id
+                              ? renderEditRow(t, idx, formatDate(t.created_at), false)
+                              : (
+                                <tr key={t.id}>
+                                  <td className="cell-num">{idx + 1}</td>
+                                  <td className="cell-date">{formatDate(t.created_at)}</td>
+                                  <td className="cell-todo">{t.todo}</td>
+                                  <td className="cell-note">
                                     <input
-                                      type="checkbox"
-                                      checked={false}
-                                      onChange={() => toggleComplete(t)}
+                                      type="text"
+                                      defaultValue={t.note || ""}
+                                      onBlur={(e) => updateNote(t.id, e.target.value)}
+                                      placeholder="—"
                                     />
-                                    <span className="checkmark" />
-                                  </label>
-                                  <button
-                                    onClick={() => deleteTask(t.id)}
-                                    className="icon-btn icon-danger"
-                                    title="삭제"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
+                                  </td>
+                                  <td className="cell-check">
+                                    <div className="check-actions">
+                                      <label className="checkbox" title="완료">
+                                        <input
+                                          type="checkbox"
+                                          checked={false}
+                                          onChange={() => toggleComplete(t)}
+                                        />
+                                        <span className="checkmark" />
+                                      </label>
+                                      <button
+                                        onClick={() => startEdit(t)}
+                                        className="icon-btn"
+                                        title="수정"
+                                      >
+                                        ✎
+                                      </button>
+                                      <button
+                                        onClick={() => deleteTask(t.id)}
+                                        className="icon-btn icon-danger"
+                                        title="삭제"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -294,13 +435,15 @@ export default function TodoApp({ supabase }) {
                         <th style={{ width: 120 }}>분류</th>
                         <th>TO-DO</th>
                         <th style={{ width: "25%" }}>비고</th>
-                        <th style={{ width: 100, textAlign: "center" }}> </th>
+                        <th style={{ width: 140, textAlign: "center" }}> </th>
                       </tr>
                     </thead>
                     <tbody>
                       {completed.map((t, idx) => {
                         const c = getCatStyle(t.category);
-                        return (
+                        return editingId === t.id ? (
+                          renderEditRow(t, idx, formatDate(t.completed_at), true)
+                        ) : (
                           <tr key={t.id} className="completed-row">
                             <td className="cell-num">{idx + 1}</td>
                             <td className="cell-date cell-date-done">
@@ -329,6 +472,13 @@ export default function TodoApp({ supabase }) {
                                 ↩
                               </button>
                               <button
+                                onClick={() => startEdit(t)}
+                                className="icon-btn"
+                                title="수정"
+                              >
+                                ✎
+                              </button>
+                              <button
                                 onClick={() => deleteTask(t.id)}
                                 className="icon-btn icon-danger"
                                 title="삭제"
@@ -350,7 +500,6 @@ export default function TodoApp({ supabase }) {
         <div className="footer">자동 저장 · 어디서든 같은 목록</div>
       </div>
 
-      {/* 글로벌 스타일 - Pretendard 폰트 & 배경 */}
       <style jsx global>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
         * { box-sizing: border-box; }
@@ -571,9 +720,46 @@ export default function TodoApp({ supabase }) {
         .check-actions {
           display: inline-flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
+          flex-wrap: nowrap;
         }
         .completed-row { background: #fcfdfc; }
+
+        /* Edit mode styles */
+        .editing-row { background: #fff7ed !important; }
+        .editing-row:hover { background: #fff7ed !important; }
+        .edit-cell { padding: 10px 14px; }
+        .edit-input {
+          width: 100%;
+          background: white;
+          border: 1.5px solid #fb923c;
+          border-radius: 8px;
+          padding: 9px 12px;
+          font-size: 13px;
+          font-family: inherit;
+          color: #0f172a;
+          outline: none;
+          transition: all 0.12s;
+        }
+        .edit-input:focus {
+          box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.18);
+        }
+        .edit-select-cat {
+          font-size: 12px;
+          font-weight: 600;
+          padding: 7px 10px;
+          cursor: pointer;
+        }
+        .save-btn {
+          background: #10b981 !important;
+          color: white !important;
+          border-color: #10b981 !important;
+          font-weight: 700;
+        }
+        .save-btn:hover {
+          background: #059669 !important;
+          color: white !important;
+        }
 
         .checkbox {
           position: relative;
@@ -626,12 +812,15 @@ export default function TodoApp({ supabase }) {
           cursor: pointer;
           font-size: 14px;
           font-family: inherit;
-          margin: 0 2px;
           transition: all 0.15s;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
         }
         .icon-btn:hover {
-          background: #f1f5f9;
-          color: #0f172a;
+          background: #fff7ed;
+          color: #ea580c;
+          border-color: #fed7aa;
         }
         .icon-danger:hover {
           background: #fef2f2;
